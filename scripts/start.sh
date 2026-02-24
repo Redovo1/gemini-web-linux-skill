@@ -1,6 +1,7 @@
 #!/bin/bash
 # =============================================================
 # Gemini Web Proxy - 启动服务
+# 支持 --proxy 参数或环境变量自动传递代理
 # =============================================================
 
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,11 +43,26 @@ source "$VENV_DIR/bin/activate"
 
 echo "🚀 启动 Gemini Web Proxy 服务..."
 
+# 构建命令参数
+CMD_ARGS="--port 8766 --profile-dir $SKILL_DIR/data/chrome-profile"
+
+# 传递代理：优先使用传入的 --proxy 参数，其次环境变量
+if [ -n "$1" ] && [ "$1" = "--proxy" ] && [ -n "$2" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $2"
+    echo "   🌐 使用代理: $2"
+elif [ -n "$HTTPS_PROXY" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $HTTPS_PROXY"
+    echo "   🌐 使用代理(HTTPS_PROXY): $HTTPS_PROXY"
+elif [ -n "$HTTP_PROXY" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $HTTP_PROXY"
+    echo "   🌐 使用代理(HTTP_PROXY): $HTTP_PROXY"
+elif [ -n "$ALL_PROXY" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $ALL_PROXY"
+    echo "   🌐 使用代理(ALL_PROXY): $ALL_PROXY"
+fi
+
 # 后台启动服务
-nohup python3 "$SKILL_DIR/server/gemini_proxy.py" \
-    --port 8766 \
-    --profile-dir "$SKILL_DIR/data/chrome-profile" \
-    > "$LOG_FILE" 2>&1 &
+nohup python3 "$SKILL_DIR/server/gemini_proxy.py" $CMD_ARGS > "$LOG_FILE" 2>&1 &
 
 SERVER_PID=$!
 echo "$SERVER_PID" > "$PID_FILE"
@@ -63,6 +79,7 @@ for i in $(seq 1 40); do
         echo "   常见原因:"
         echo "   1. Google 登录已过期 → 执行 bash $SKILL_DIR/scripts/login.sh"
         echo "   2. Chromium 系统依赖缺失 → 执行 sudo playwright install-deps chromium"
+        echo "   3. 需要代理 → 执行 bash $SKILL_DIR/scripts/start.sh --proxy http://127.0.0.1:10808"
         rm -f "$PID_FILE"
         exit 1
     fi
@@ -85,4 +102,3 @@ done
 echo ""
 echo "⚠️ 服务启动超时（但进程仍在运行 PID: $SERVER_PID）"
 echo "   请检查日志: tail -f $LOG_FILE"
-echo "   进程可能仍在加载 Gemini 网页，请稍后重试"

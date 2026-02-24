@@ -2,6 +2,7 @@
 # =============================================================
 # Gemini Web Proxy - Google 账号登录脚本
 # 打开浏览器让用户登录 Google，保存登录状态
+# 支持 --proxy 参数或环境变量自动传递代理
 # =============================================================
 
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,4 +23,22 @@ echo "登录状态会自动保存，以后不需要重复登录。"
 echo "================================================"
 echo ""
 
-python3 "$SKILL_DIR/server/login_helper.py" --profile-dir "$SKILL_DIR/data/chrome-profile"
+# 构建命令参数
+CMD_ARGS="--profile-dir $SKILL_DIR/data/chrome-profile"
+
+# 传递代理：优先使用传入的 --proxy 参数，其次环境变量
+if [ -n "$1" ] && [ "$1" = "--proxy" ] && [ -n "$2" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $2"
+    echo "🌐 使用代理: $2"
+elif [ -n "$HTTPS_PROXY" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $HTTPS_PROXY"
+    echo "🌐 使用代理(HTTPS_PROXY): $HTTPS_PROXY"
+elif [ -n "$HTTP_PROXY" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $HTTP_PROXY"
+    echo "🌐 使用代理(HTTP_PROXY): $HTTP_PROXY"
+elif [ -n "$ALL_PROXY" ]; then
+    CMD_ARGS="$CMD_ARGS --proxy $ALL_PROXY"
+    echo "🌐 使用代理(ALL_PROXY): $ALL_PROXY"
+fi
+
+python3 "$SKILL_DIR/server/login_helper.py" $CMD_ARGS

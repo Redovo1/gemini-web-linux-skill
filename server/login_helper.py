@@ -1,16 +1,31 @@
 """
-Gemini Web Proxy - Google 账号登录助手
+Gemini Web Proxy - Google 账号登录助手 v1.2.0
 使用 Playwright 打开浏览器，让用户手动登录 Google 账号并保存登录状态。
+
+支持 --proxy 参数让浏览器走代理。
 """
 
 import argparse
 import sys
 import signal
+import os
+
+
+def get_proxy_server(args_proxy=None):
+    """获取代理地址。优先 --proxy 参数，其次环境变量。"""
+    if args_proxy:
+        return args_proxy
+    for env_var in ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy']:
+        proxy = os.environ.get(env_var)
+        if proxy:
+            return proxy
+    return None
 
 
 def main():
     parser = argparse.ArgumentParser(description="Gemini Login Helper")
     parser.add_argument("--profile-dir", required=True, help="Chrome profile 保存目录")
+    parser.add_argument("--proxy", default=None, help="代理地址 (如: http://127.0.0.1:10808)")
     args = parser.parse_args()
 
     try:
@@ -19,7 +34,11 @@ def main():
         print("❌ Playwright 未安装，请先执行安装脚本: bash scripts/setup.sh")
         sys.exit(1)
 
+    proxy = get_proxy_server(args.proxy)
+
     print("🌐 正在启动浏览器...")
+    if proxy:
+        print(f"   使用代理: {proxy}")
     print("   请在浏览器中登录 Google 账号并进入 Gemini 页面")
     print("   完成后关闭浏览器窗口即可\n")
 
@@ -48,10 +67,8 @@ def main():
 
     pw = sync_playwright().start()
 
-    # 注意：不要使用 channel="chromium"
-    # playwright install chromium 安装的是 bundled Chromium
-    # 指定 channel 会去找系统安装的 Chrome/Chromium，在纯净 Linux 上可能找不到
-    context = pw.chromium.launch_persistent_context(
+    # 构建启动参数
+    launch_kwargs = dict(
         user_data_dir=args.profile_dir,
         headless=False,  # 必须有界面让用户登录
         args=[
@@ -63,6 +80,12 @@ def main():
         locale="zh-CN",
         user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     )
+
+    # 代理支持
+    if proxy:
+        launch_kwargs["proxy"] = {"server": proxy}
+
+    context = pw.chromium.launch_persistent_context(**launch_kwargs)
 
     page = context.pages[0] if context.pages else context.new_page()
 
@@ -85,7 +108,6 @@ def main():
 
     # 等待用户关闭浏览器
     try:
-        # 监听所有页面关闭事件
         while True:
             pages = context.pages
             if not pages:
@@ -94,7 +116,6 @@ def main():
                 pages[0].wait_for_event("close", timeout=5000)
                 break
             except Exception:
-                # 超时继续等待
                 continue
     except Exception:
         pass
